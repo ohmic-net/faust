@@ -71,10 +71,8 @@ CodeContainer* RustCodeContainer::createContainer(const string& name, int numInp
     }
 
     if (gGlobal->gOpenMPSwitch) {
-        // container = new RustOpenMPCodeContainer(name, numInputs, numOutputs, dst);
         throw faustexception("ERROR : OpenMP not supported for Rust\n");
     } else if (gGlobal->gSchedulerSwitch) {
-        // container = new RustWorkStealingCodeContainer(name, numInputs, numOutputs, dst);
         throw faustexception("ERROR : Scheduler not supported for Rust\n");
     } else if (gGlobal->gVectorSwitch) {
         // container = new RustVectorCodeContainer(name, numInputs, numOutputs, dst);
@@ -474,7 +472,7 @@ void RustScalarCodeContainer::generateCompute(int n)
         iterators.push_back("inputs" + std::to_string(i));
     }
     for (int i = 0; i < fNumOutputs; ++i) {
-        iterators.push_back("outputs"+ std::to_string(i));
+        iterators.push_back("outputs" + std::to_string(i));
     }
     IteratorForLoopInst* loop = fCurLoop->generateSimpleScalarLoop(iterators);
     loop->accept(&fCodeProducer);

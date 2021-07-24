@@ -49,6 +49,7 @@
 #include "garbageable.hh"
 #include "global.hh"
 #include "instructions_compiler.hh"
+#include "instructions_compiler1.hh"
 #include "libfaust.h"
 #include "ppbox.hh"
 #include "ppsig.hh"
@@ -73,6 +74,14 @@
 #include "cpp_gpu_code_container.hh"
 #endif
 
+#ifdef CSHARP_BUILD
+#include "csharp_code_container.hh"
+#endif
+
+#ifdef DLANG_BUILD
+#include "dlang_code_container.hh"
+#endif
+
 #ifdef FIR_BUILD
 #include "fir_code_container.hh"
 #endif
@@ -85,8 +94,8 @@
 #include "java_code_container.hh"
 #endif
 
-#ifdef CSHARP_BUILD
-#include "csharp_code_container.hh"
+#ifdef JULIA_BUILD
+#include "julia_code_container.hh"
 #endif
 
 #ifdef LLVM_BUILD
@@ -102,7 +111,6 @@
 
 #ifdef RUST_BUILD
 #include "rust_code_container.hh"
-#include "rust_instructions_compiler.hh"
 #endif
 
 #ifdef SOUL_BUILD
@@ -112,10 +120,6 @@
 #ifdef WASM_BUILD
 #include "wasm_code_container.hh"
 #include "wast_code_container.hh"
-#endif
-
-#ifdef DLANG_BUILD
-#include "dlang_code_container.hh"
 #endif
 
 using namespace std;
@@ -165,6 +169,10 @@ static void enumBackends(ostream& out)
 
 #ifdef JAVA_BUILD
     out << dspto << "Java" << endl;
+#endif
+    
+#ifdef JULIA_BUILD
+    out << dspto << "Julia" << endl;
 #endif
 
 #ifdef LLVM_BUILD
@@ -537,8 +545,12 @@ static bool processCmdline(int argc, const char* argv[])
             gGlobal->gHasExp10 = true;
             i += 1;
 
-        } else if (isCmd(argv[i], "-os", "--one-sample")) {
-            gGlobal->gOneSample = true;
+        } else if (isCmd(argv[i], "-os", "--one-sample") || isCmd(argv[i], "-os0", "--one-sample0")) {
+            gGlobal->gOneSample = 0;
+            i += 1;
+            
+        } else if (isCmd(argv[i], "-os1", "--one-sample1")) {
+            gGlobal->gOneSample = 1;
             i += 1;
             
         } else if (isCmd(argv[i], "-cm", "--compute-mix")) {
@@ -678,12 +690,12 @@ static bool processCmdline(int argc, const char* argv[])
         throw faustexception("ERROR : 'ocpp' backend can only be used in scalar mode\n");
     }
 #endif
-    if (gGlobal->gOneSample && gGlobal->gOutputLang != "cpp" && gGlobal->gOutputLang != "c" && gGlobal->gOutputLang != "dlang" &&
+    if (gGlobal->gOneSample >= 0 && gGlobal->gOutputLang != "cpp" && gGlobal->gOutputLang != "c" && gGlobal->gOutputLang != "dlang" &&
         !startWith(gGlobal->gOutputLang, "soul") && gGlobal->gOutputLang != "fir") {
         throw faustexception("ERROR : '-os' option cannot only be used with 'cpp', 'c', 'fir' or 'soul' backends\n");
     }
 
-    if (gGlobal->gOneSample && gGlobal->gVectorSwitch) {
+    if (gGlobal->gOneSample >= 0 && gGlobal->gVectorSwitch) {
         throw faustexception("ERROR : '-os' option cannot only be used in scalar mode\n");
     }
     
@@ -858,7 +870,7 @@ static void printHelp()
     cout << endl << "Code generation options:" << line;
     cout << tab << "-lang <lang> --language                 select output language," << endl;
     cout << tab
-         << "                                        'lang' should be c, cpp (default), csharp, dlang, fir, interp, java, llvm, "
+         << "                                        'lang' should be c, cpp (default), csharp, dlang, fir, interp, java, julia, llvm, "
             "ocpp, rust, soul or wast/wasm."
          << endl;
     cout << tab
@@ -881,7 +893,9 @@ static void printHelp()
             "auto-vectorization."
          << endl;
     cout << tab << "-exp10      --generate-exp10            pow(10,x) replaced by possibly faster exp10(x)." << endl;
-    cout << tab << "-os         --one-sample                generate one sample computation." << endl;
+    cout << tab << "-os         --one-sample                generate one sample computation (same as -os0)." << endl;
+    cout << tab << "-os0        --one-sample0               generate one sample computation (0 = separated control)." << endl;
+    cout << tab << "-os1        --one-sample1               generate one sample computation (1 = separated control and DSP struct)." << endl;
     cout << tab << "-cm         --compute-mix               mix in outputs buffers." << endl;
     cout << tab
          << "-cn <name>  --class-name <name>         specify the name of the dsp class to be used instead of mydsp."
@@ -1445,6 +1459,13 @@ static void generateCode(Tree signals, int numInputs, int numOutputs, bool gener
 #else
             throw faustexception("ERROR : -lang java not supported since JAVA backend is not built\n");
 #endif
+        } else if (gGlobal->gOutputLang == "julia") {
+#ifdef JULIA_BUILD
+            gGlobal->gAllowForeignFunction = false;  // No foreign functions
+            container = JuliaCodeContainer::createContainer(gGlobal->gClassName, numInputs, numOutputs, dst.get());
+#else
+            throw faustexception("ERROR : -lang julia not supported since Julia backend is not built\n");
+#endif
         } else if (gGlobal->gOutputLang == "csharp") {
 #ifdef CSHARP_BUILD
             gGlobal->gAllowForeignFunction = false;  // No foreign functions
@@ -1577,8 +1598,8 @@ static void generateCode(Tree signals, int numInputs, int numOutputs, bool gener
                 new_comp = new DAGInstructionsCompiler(container);
             }
 #ifdef RUST_BUILD
-            else if (gGlobal->gOutputLang == "rust") {
-                new_comp = new RustInstructionsCompiler(container);
+            else if (gGlobal->gOutputLang == "rust" || gGlobal->gOutputLang == "julia") {
+                new_comp = new InstructionsCompiler1(container);
             }
 #endif
             else {

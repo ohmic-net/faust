@@ -11,7 +11,7 @@ system := $(shell echo $(system) | grep MINGW > /dev/null && echo MINGW || echo 
 # output directories
 FAUSTDIR ?= faustdir
 IOSDIR   := iosdir
-VERSION := 2.32.17
+VERSION := 2.34.0
 
 #===============================================================
 # current generator and backends
@@ -48,11 +48,11 @@ ifeq ($(WORKLET), on)
 WORKLETOPT = "-DWORKLET=on"
 endif
 
-CMAKEOPT ?= -DCMAKE_BUILD_TYPE=Release $(WORKLETOPT)
-BUILDOPT ?= --config Release
+#CMAKEOPT ?= -DCMAKE_BUILD_TYPE=Release $(WORKLETOPT)
+#BUILDOPT ?= --config Release
 
-#CMAKEOPT ?= -DCMAKE_BUILD_TYPE=Debug $(WORKLETOPT)
-#BUILDOPT ?= --config Debug
+CMAKEOPT ?= -DCMAKE_BUILD_TYPE=Debug $(WORKLETOPT)
+BUILDOPT ?= --config Debug
 
 #===============================================================
 # options
@@ -125,7 +125,7 @@ help:
 	@echo "  WORKLET                     : Compile wasm glue library for worklet (default is off)"
 	@echo
 	@echo "Backends:"
-	@echo "  the FAUST backends currently included are described in the '$(BACKENDS)' file"
+	@echo "  the Faust backends currently included are described in the '$(BACKENDS)' file"
 	@echo "  you can freely customize this file or use another file with the BACKENDS option"
 	@echo
 	@echo "Targets:"
@@ -150,8 +150,8 @@ help:
 	@echo "------ see also the README.md file ------"
 	@echo
 	@echo "Packaging targets:"
-	@echo " 'package'    : build a faust package for the current platform"
-	@echo " 'release'    : build a faust release (MacOS only)"
+	@echo " 'package'    : build a Faust package for the current platform"
+	@echo " 'release'    : build a Faust release (MacOS only)"
 	@echo "                includes faust, faustgen and dist packages"
 
 	
@@ -179,6 +179,7 @@ jsscripts:
 #===============================================================
 # packaging
 #===============================================================
+# don't change the PACK variable, files are put at first hierarchy level
 PACK := package/Faust-$(VERSION)
 package:
 	$(MAKE) $(NATIVEPACK)
@@ -193,9 +194,14 @@ macpack: package/README.html
 	-[ -d $(PACK) ] && rm -rf $(PACK)
 	$(MAKE) cmake BACKENDs=all.cmake TARGETS=all.cmake  CMAKEOPT="-DDEPLOYMENT_TARGET=on"
 	$(MAKE) install PREFIX=../$(PACK)/Faust-$(VERSION)
+	$(MAKE) mactools FAUSTDIR=../../build/$(PACK)/Faust-$(VERSION)
 	cp package/INSTALL.html $(PACK)
 	cp package/README.html $(PACK)
 	hdiutil create Faust-$(VERSION).dmg -fs HFS+ -srcfolder $(PACK) -format UDBZ -ov
+
+mactools:
+	$(MAKE) -C ../tools/benchmark FAUST=$(FAUSTDIR)/bin/faust TARGETS="dynamic-faust faustbench-llvm"
+	$(MAKE) -C ../tools/benchmark install PREFIX=$(FAUSTDIR) FAUST=$(FAUSTDIR)/bin/faust TARGETS="dynamic-faust faustbench-llvm"
 
 linuxpack:
 	@echo Linux packaging not implemented. 
@@ -224,14 +230,21 @@ release:
 	rm -rf Release-$(VERSION)/*
 	cp Faust-$(VERSION).dmg Release-$(VERSION) 
 	$(MAKE) install PREFIX=$(HOME)/Faust-$(VERSION)
+	@echo "################## Building faust src distribution ###################"
+	$(MAKE) -C .. dist
+	mv ../faust-$(VERSION).tar.gz Release-$(VERSION)
+	$(MAKE) faustgen
+	$(MAKE) faustlive
+
+faustgen:
 	@echo "################## Building faustgen package ###################"
 	$(MAKE) -C $(FAUSTGEN) clean
 	$(MAKE) -C $(FAUSTGEN) FAUST=$(HOME)/Faust-$(VERSION)/bin/faust
 	$(MAKE) -C $(FAUSTGEN) package
 	cp $(FAUSTGEN)/package/*.dmg Release-$(VERSION) 
-	@echo "################## Building faust src distribution ###################"
-	$(MAKE) -C .. dist
-	mv ../faust-$(VERSION).tar.gz Release-$(VERSION)
+
+faustlive: APATH=$(shell pwd)
+faustlive:
 	@echo "################## Building faustlive package ###################"
 	$(MAKE) -C $(FAUSTLIVE)/Build release FAUST=$(HOME)/Faust-$(VERSION)/bin/faust DEST=$(APATH)/Release-$(VERSION)
 

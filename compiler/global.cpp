@@ -177,7 +177,7 @@ global::global() : TABBER(1), gLoopDetector(1024, 400), gStackOverflowDetector(M
     gMathApprox           = false;
     gNeedManualPow        = true;
     gRemoveVarAddress     = false;
-    gOneSample            = false;
+    gOneSample            = -1;
     gOneSampleControl     = false;
     gComputeMix           = false;
     gFastMathLib          = "default";
@@ -624,7 +624,7 @@ void global::printCompilationOptions(stringstream& dst, bool backend)
 #endif
     }
     if (gInPlace) dst << "-inpl ";
-    if (gOneSample) dst << "-os ";
+    if (gOneSample >= 0) dst << "-os" << gOneSample << " ";
     if (gLightMode) dst << "-light ";
     if (gMemoryManager) dst << "-mem ";
     if (gComputeMix) dst << "-cm ";
@@ -633,7 +633,6 @@ void global::printCompilationOptions(stringstream& dst, bool backend)
     if (gMaskDelayLineThreshold != INT_MAX) dst << "-dtl " << gMaskDelayLineThreshold << " ";
     dst << "-es " << gEnableFlag << " ";
     if (gHasExp10) dst << "-exp10 ";
-    if (gOneSample) dst << "-os ";
     if (gSchedulerSwitch) dst << "-sch ";
     if (gOpenMPSwitch) dst << "-omp " << ((gOpenMPLoop) ? "-pl " : "");
     if (gVectorSwitch) {
@@ -734,20 +733,23 @@ global::~global()
 #ifdef CPP_BUILD
     CPPInstVisitor::cleanup();
 #endif
+#ifdef CSHARP_BUILD
+    CSharpInstVisitor::cleanup();
+#endif
+#ifdef DLANG_BUILD
+    DLangInstVisitor::cleanup();
+#endif
 #ifdef FIR_BUILD
     FIRInstVisitor::cleanup();
 #endif
 #ifdef JAVA_BUILD
     JAVAInstVisitor::cleanup();
 #endif
-#ifdef CSHARP_BUILD
-    CSharpInstVisitor::cleanup();
+#ifdef JULIS_BUILD
+    JuliaInstVisitor::cleanup();
 #endif
 #ifdef RUST_BUILD
     RustInstVisitor::cleanup();
-#endif
-#ifdef DLANG_BUILD
-    DLangInstVisitor::cleanup();
 #endif
 }
 

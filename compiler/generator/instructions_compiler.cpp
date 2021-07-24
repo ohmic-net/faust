@@ -29,6 +29,7 @@
 #include "global.hh"
 #include "instructions.hh"
 #include "instructions_compiler.hh"
+#include "instructions_compiler1.hh"
 #include "ppsig.hh"
 #include "prim2.hh"
 #include "privatise.hh"
@@ -247,9 +248,9 @@ Tree InstructionsCompiler::prepare(Tree LS)
     Tree L2 = SP.mapself(L1);
     endTiming("Cast and Promotion");
 
-    startTiming("simplification");
+    startTiming("second simplification");
     Tree L3 = simplify(L2);  // Simplify by executing every computable operation
-    endTiming("simplification");
+    endTiming("second simplification");
 
     startTiming("Constant propagation");
     SignalConstantPropagation SK;
@@ -405,9 +406,15 @@ CodeContainer* InstructionsCompiler::signal2Container(const string& name, Tree s
 {
     ::Type t = getCertifiedSigType(sig);
 
-    CodeContainer*       container = fContainer->createScalarContainer(name, t->nature());
-    InstructionsCompiler C(container);
-    C.compileSingleSignal(sig);
+    CodeContainer* container = fContainer->createScalarContainer(name, t->nature());
+    
+    if (gGlobal->gOutputLang == "rust" || gGlobal->gOutputLang == "julia") {
+        InstructionsCompiler1 C(container);
+        C.compileSingleSignal(sig);
+    } else {
+        InstructionsCompiler C(container);
+        C.compileSingleSignal(sig);
+    }
     return container;
 }
 
@@ -502,9 +509,9 @@ void InstructionsCompiler::compileMultiSignal(Tree L)
     if (!gGlobal->gOpenCLSwitch && !gGlobal->gCUDASwitch) {  // HACK
 
         // Input declarations
-        if (gGlobal->gOutputLang == "rust") {
-            // special handling for Rust backend
-            pushComputeBlockMethod(InstBuilder::genDeclareBufferIteratorsRust("inputs", fContainer->inputs(), false));
+        if (gGlobal->gOutputLang == "rust" || gGlobal->gOutputLang == "julia") {
+            // special handling for Rust and Julia backends
+            pushComputeBlockMethod(InstBuilder::genDeclareBufferIterators("input", "inputs", fContainer->inputs(), false));
         } else {
             // "input" and "inputs" used as a name convention
             if (gGlobal->gOneSampleControl) {
@@ -515,7 +522,7 @@ void InstructionsCompiler::compileMultiSignal(Tree L)
                         CS(sigInput(index));
                     }
                 }
-            } else if (gGlobal->gOneSample) {
+            } else if (gGlobal->gOneSample >= 0) {
                 // Nothing...
             } else {
                 for (int index = 0; index < fContainer->inputs(); index++) {
@@ -531,9 +538,9 @@ void InstructionsCompiler::compileMultiSignal(Tree L)
         }
 
         // Output declarations
-        if (gGlobal->gOutputLang == "rust") {
-            // special handling for Rust backend
-            pushComputeBlockMethod(InstBuilder::genDeclareBufferIteratorsRust("outputs", fContainer->outputs(), true));
+        if (gGlobal->gOutputLang == "rust" || gGlobal->gOutputLang == "julia") {
+            // special handling for Rust and Julia backends
+            pushComputeBlockMethod(InstBuilder::genDeclareBufferIterators("output", "outputs", fContainer->outputs(), true));
         } else {
             // "output" and "outputs" used as a name convention
             if (gGlobal->gOneSampleControl) {
@@ -541,7 +548,7 @@ void InstructionsCompiler::compileMultiSignal(Tree L)
                     string name = subst("output$0", T(index));
                     pushDeclare(InstBuilder::genDecStructVar(name, InstBuilder::genArrayTyped(type, 0)));
                 }
-            } else if (gGlobal->gOneSample) {
+            } else if (gGlobal->gOneSample >= 0) {
                 // Nothing...
             } else {
                 for (int index = 0; index < fContainer->outputs(); index++) {
@@ -573,7 +580,7 @@ void InstructionsCompiler::compileMultiSignal(Tree L)
             } else {
                 pushComputeDSPMethod(InstBuilder::genStoreStackVar(name, res));
             }
-        } else if (gGlobal->gOneSample) {
+        } else if (gGlobal->gOneSample >= 0) {
             name = "outputs";
             if (gGlobal->gComputeMix) {
                 ValueInst* res1 = InstBuilder::genAdd(res, InstBuilder::genLoadArrayStackVar(name, InstBuilder::genInt32NumInst(index)));
@@ -880,7 +887,7 @@ ValueInst* InstructionsCompiler::generateFVar(Tree sig, Tree type, const string&
 {
     // Check access (handling 'fFullCount' as a special case)
     if ((name != fFullCount && !gGlobal->gAllowForeignVar)
-        || (name == fFullCount && (gGlobal->gOneSample || gGlobal->gOneSampleControl))) {
+        || (name == fFullCount && (gGlobal->gOneSample >= 0 || gGlobal->gOneSampleControl))) {
         stringstream error;
         error << "ERROR : accessing foreign variable '" << name << "'"
         << " is not allowed in this compilation mode!" << endl;
@@ -918,7 +925,7 @@ ValueInst* InstructionsCompiler::generateInput(Tree sig, int idx)
             InstBuilder::genLoadStackVar(subst("*input$0", T(idx))));
     } else if (gGlobal->gOneSampleControl) {
         res = InstBuilder::genCastFloatInst(InstBuilder::genLoadStructVar(subst("input$0", T(idx))));
-    } else if (gGlobal->gOneSample) {
+    } else if (gGlobal->gOneSample >= 0) {
         res = InstBuilder::genCastFloatInst(
             InstBuilder::genLoadArrayStackVar("inputs", InstBuilder::genInt32NumInst(idx)));
     } else {
@@ -1051,7 +1058,7 @@ ValueInst* InstructionsCompiler::generateCacheCode(Tree sig, ValueInst* exp)
     string         vname;
     Typed::VarType ctype;
     int            sharing = getSharingCount(sig);
-    old_Occurences*    o   = fOccMarkup->retrieve(sig);
+    old_Occurences* o      = fOccMarkup->retrieve(sig);
     faustassert(o);
 
     // Check for expression occuring in delays
@@ -1102,11 +1109,6 @@ ValueInst* InstructionsCompiler::forceCacheCode(Tree sig, ValueInst* exp)
 
 ValueInst* InstructionsCompiler::generateVariableStore(Tree sig, ValueInst* exp)
 {
-    // If value is already a simple value, no need to create a variable, just reuse it...
-    if (exp->isSimpleValue()) {
-        return exp;
-    }
-
     string         vname, vname_perm;
     Typed::VarType ctype;
     ::Type         t = getCertifiedSigType(sig);
@@ -1126,9 +1128,9 @@ ValueInst* InstructionsCompiler::generateVariableStore(Tree sig, ValueInst* exp)
                 pushInitMethod(InstBuilder::genDecStackVar(vname, InstBuilder::genBasicTyped(ctype), exp));
                 return InstBuilder::genLoadStackVar(vname);
             }
-
+  
         case kBlock:
-            if (gGlobal->gOneSample || gGlobal->gOneSampleControl) {
+            if (gGlobal->gOneSample >= 0 || gGlobal->gOneSampleControl) {
                 if (t->nature() == kInt) {
                     pushComputeBlockMethod(InstBuilder::genStoreArrayStackVar(
                         "iControl", InstBuilder::genInt32NumInst(fContainer->fInt32ControlNum), exp));
@@ -1178,7 +1180,7 @@ ValueInst* InstructionsCompiler::generateVariableStore(Tree sig, ValueInst* exp)
                     pushDeclare(InstBuilder::genDecStructVar(vname_perm, InstBuilder::genBasicTyped(ctype)));
                     pushClearMethod(InstBuilder::genStoreStructVar(vname_perm, InstBuilder::genTypedZero(ctype)));
 
-                    if (gGlobal->gOneSample || gGlobal->gOneSampleControl) {
+                    if (gGlobal->gOneSample >= 0 || gGlobal->gOneSampleControl) {
                         pushComputeDSPMethod(InstBuilder::genControlInst(getConditionCode(sig), InstBuilder::genStoreStructVar(vname_perm, exp)));
                         return InstBuilder::genLoadStructVar(vname_perm);
                     } else {
@@ -1331,7 +1333,7 @@ ValueInst* InstructionsCompiler::generateSoundfile(Tree sig, Tree path)
             block, InstBuilder::genBlockInst()));
     }
 
-    if (gGlobal->gOneSample) {
+    if (gGlobal->gOneSample >= 0) {
         pushDeclare(InstBuilder::genDecStructVar(SFcache, InstBuilder::genBasicTyped(Typed::kSound_ptr)));
         pushComputeBlockMethod(InstBuilder::genStoreStructVar(SFcache, InstBuilder::genLoadStructVar(varname)));
         pushPostComputeBlockMethod(InstBuilder::genStoreStructVar(varname, InstBuilder::genLoadStructVar(SFcache)));
@@ -1354,7 +1356,7 @@ ValueInst* InstructionsCompiler::generateSoundfileLength(Tree sig, ValueInst* sf
     string SFcache        = load->fAddress->getName() + "ca";
     string SFcache_length = gGlobal->getFreshID(SFcache + "_le");
 
-    if (gGlobal->gOneSample) {
+    if (gGlobal->gOneSample >= 0) {
 
         // Struct access using an index that will be converted as a field name
         ValueInst* v1 = InstBuilder::genLoadStructPtrVar(SFcache, Address::kStruct, InstBuilder::genInt32NumInst(1));
@@ -1382,7 +1384,7 @@ ValueInst* InstructionsCompiler::generateSoundfileRate(Tree sig, ValueInst* sf, 
     string SFcache      = load->fAddress->getName() + "ca";
     string SFcache_rate = gGlobal->getFreshID(SFcache + "_ra");
 
-    if (gGlobal->gOneSample) {
+    if (gGlobal->gOneSample >= 0) {
 
         // Struct access using an index that will be converted as a field name
         ValueInst* v1 = InstBuilder::genLoadStructPtrVar(SFcache, Address::kStruct, InstBuilder::genInt32NumInst(2));
@@ -1415,7 +1417,7 @@ ValueInst* InstructionsCompiler::generateSoundfileBuffer(Tree sig, ValueInst* sf
     string SFcache_buffer_chan = gGlobal->getFreshID(SFcache + "_bu_ch");
     string SFcache_offset      = gGlobal->getFreshID(SFcache + "_of");
 
-    if (gGlobal->gOneSample) {
+    if (gGlobal->gOneSample >= 0) {
 
         // Struct access using an index that will be converted as a field name
         ValueInst* v1 = InstBuilder::genLoadStructPtrVar(SFcache, Address::kStruct, InstBuilder::genInt32NumInst(3));
@@ -1496,8 +1498,8 @@ ValueInst* InstructionsCompiler::generateTable(Tree sig, Tree tsize, Tree conten
             kvnames.second, InstBuilder::genNamedTyped(kvnames.first, InstBuilder::genBasicTyped(Typed::kObj_ptr)),
             obj));
 
-        // HACK for Rust backend
-        if (gGlobal->gOutputLang != "rust") {
+        // HACK for Rust and Julia backends
+        if (gGlobal->gOutputLang != "rust" && gGlobal->gOutputLang != "julia") {
             // Delete object
             list<ValueInst*> args3;
             if (gGlobal->gMemoryManager) {
@@ -1570,8 +1572,8 @@ ValueInst* InstructionsCompiler::generateStaticTable(Tree sig, Tree tsize, Tree 
                 kvnames.second, InstBuilder::genNamedTyped(kvnames.first, InstBuilder::genBasicTyped(Typed::kObj_ptr)),
                 obj));
 
-            // HACK for Rust backend
-            if (gGlobal->gOutputLang != "rust") {
+            // HACK for Rust and Julia backends
+            if (gGlobal->gOutputLang != "rust" && gGlobal->gOutputLang != "julia") {
                 // Delete object
                 list<ValueInst*> args3;
                 if (gGlobal->gMemoryManager) {
@@ -1749,8 +1751,8 @@ ValueInst* InstructionsCompiler::generateSigGen(Tree sig, Tree content)
     pushInitMethod(InstBuilder::genDecStackVar(
         signame, InstBuilder::genNamedTyped(cname, InstBuilder::genBasicTyped(Typed::kObj_ptr)), obj));
 
-    // HACK for Rust backend
-    if (gGlobal->gOutputLang != "rust") {
+    // HACK for Rust an Julia backends
+    if (gGlobal->gOutputLang != "rust" && gGlobal->gOutputLang != "julia") {
         // Delete object
         list<ValueInst*> args3;
         args3.push_back(InstBuilder::genLoadStackVar(signame));
@@ -1783,8 +1785,8 @@ ValueInst* InstructionsCompiler::generateStaticSigGen(Tree sig, Tree content)
     pushStaticInitMethod(InstBuilder::genDecStackVar(
         signame, InstBuilder::genNamedTyped(cname, InstBuilder::genBasicTyped(Typed::kObj_ptr)), obj));
 
-    // HACK for Rust backend
-    if (gGlobal->gOutputLang != "rust") {
+    // HACK for Rust and Julia backends
+    if (gGlobal->gOutputLang != "rust" && gGlobal->gOutputLang != "julia") {
         // Delete object
         list<ValueInst*> args3;
         args3.push_back(InstBuilder::genLoadStackVar(signame));

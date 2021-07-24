@@ -3,7 +3,7 @@ project (faust)
 
 #######################################
 # versions management
-set (VERSION 2.32.17)
+set (VERSION 2.34.0)
 macro (get_major_minor_patch version)
 	string( REGEX REPLACE "([0-9]*)\\.([0-9]*)\\.([0-9]*)" "\\1"  VERSION_MAJOR ${version} )
 	string( REGEX REPLACE "([0-9]*)\\.([0-9]*)\\.([0-9]*)" "\\2"  VERSION_MINOR ${version} )
@@ -62,12 +62,13 @@ set (FAUST_INC ${SRCDIR}
 	${SRCDIR}/boxes ${SRCDIR}/documentator ${SRCDIR}/draw
 	${SRCDIR}/errors ${SRCDIR}/evaluate ${SRCDIR}/extended
 	${SRCDIR}/generator
+	${SRCDIR}/generator/dlang
+	${SRCDIR}/generator/csharp
 	${SRCDIR}/generator/fir
+	${SRCDIR}/generator/julia
 	${SRCDIR}/generator/interpreter
 	${SRCDIR}/generator/rust
 	${SRCDIR}/generator/soul
-	${SRCDIR}/generator/dlang
-	${SRCDIR}/generator/csharp
 	${SRCDIR}/normalize ${SRCDIR}/parallelize ${SRCDIR}/parser
 	${SRCDIR}/patternmatcher ${SRCDIR}/propagate ${SRCDIR}/signals
 	${SRCDIR}/tlib ${SRCDIR}/transform ${SRCDIR}/utils
@@ -371,11 +372,10 @@ install (
 file (GLOB FAUSTDSPLIBS ${ROOT}/libraries/*.lib ${ROOT}/libraries/old/*.lib)
 file (GLOB FAUSTDPSEMB ${ROOT}/libraries/embedded/*.lib)
 # install various files from the architecture root folder
-file (GLOB FAUSTARCHS   ${ARCHDIR}/*.cpp ${ARCHDIR}/*.c
-						${ARCHDIR}/*.rs  ${ARCHDIR}/*.js
-						${ARCHDIR}/*.java ${ARCHDIR}/*.h
-						${ARCHDIR}/*.d   ${ARCHDIR}/*.d
-						${ARCHDIR}/mathdoctexts-*.txt  ${ARCHDIR}/latexheader.tex)
+file (GLOB FAUSTARCHS ${ARCHDIR}/*.cpp ${ARCHDIR}/*.c ${ARCHDIR}/*.cs ${ARCHDIR}/*.rs ${ARCHDIR}/*.jl
+					${ARCHDIR}/*.java ${ARCHDIR}/*.h 
+					${ARCHDIR}/*.d ${ARCHDIR}/mathdoctexts-*.txt  
+					${ARCHDIR}/latexheader.tex)
 install (
     FILES     ${FAUSTDSPLIBS} ${FAUSTARCHS} ${ROOT}/tools/faust2appls/Info.plist DESTINATION ${CMAKE_INSTALL_PREFIX}/share/faust
     PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
