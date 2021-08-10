@@ -3,7 +3,7 @@ project (faust)
 
 #######################################
 # versions management
-set (VERSION 2.34.0)
+set (VERSION 2.34.3)
 macro (get_major_minor_patch version)
 	string( REGEX REPLACE "([0-9]*)\\.([0-9]*)\\.([0-9]*)" "\\1"  VERSION_MAJOR ${version} )
 	string( REGEX REPLACE "([0-9]*)\\.([0-9]*)\\.([0-9]*)" "\\2"  VERSION_MINOR ${version} )
@@ -386,7 +386,7 @@ install (
 )
 
 # install folders
-set (ARCHSRC android api AU audiokit daisy esp32 iOS juce soul max-msp nodejs osclib sam smartKeyboard teensy unity vcvrack webaudio)
+set (ARCHSRC android api AU audiokit daisy esp32 iOS juce julia soul max-msp nodejs osclib sam smartKeyboard teensy unity vcvrack webaudio)
 foreach (dir ${ARCHSRC})
 	set(ARCHFOLDERS ${ARCHFOLDERS} ${ARCHDIR}/${dir})
 endforeach()

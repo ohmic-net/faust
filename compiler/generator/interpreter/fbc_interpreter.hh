@@ -604,8 +604,10 @@ class FBCInterpreter : public FBCExecutor<REAL> {
         Soundfile*    sound_stack[512];
         InstructionIT address_stack[64];
         
-        // Check block coherency
-        block->check();
+        if (TRACE > 0) {
+            // Check block coherency
+            block->check();
+        }
         
 #define dispatchFirstScal() \
     {                       \
@@ -2597,7 +2599,7 @@ class FBCInterpreter : public FBCExecutor<REAL> {
             &&do_kAbs, &&do_kAbsf, &&do_kAcosf, &&do_kAcoshf, &&do_kAsinf, &&do_kAsinhf, &&do_kAtanf, &&do_kAtanhf, &&do_kCeilf,
             &&do_kCosf, &&do_kCoshf,
             &&do_kExpf, &&do_kFloorf, &&do_kLogf, &&do_kLog10f, &&do_kRintf, &&do_kRoundf, &&do_kSinf, &&do_kSinhf, &&do_kSqrtf,
-            &&do_kTanf, &&do_kTanhf, &&do_kIsnanf, &&do_kIsinff,
+            &&do_kTanf, &&do_kTanhf, &&do_kIsnanf, &&do_kIsinff, &&do_kCopysignf,
 
             // Extended unary math (heap OP heap)
             &&do_kAbsHeap, &&do_kAbsfHeap, &&do_kAcosfHeap, &&do_kAcoshfHeap, &&do_kAsinfHeap, &&do_kAsinhfHeap, &&do_kAtanfHeap, &&do_kAtanhfHeap,
@@ -2687,8 +2689,10 @@ class FBCInterpreter : public FBCExecutor<REAL> {
     }
 #define emptyReturnScal() (addr_stack_index == 0)
 
-        // Check block coherency
-        block->check();
+        if (TRACE > 0) {
+            // Check block coherency
+            block->check();
+        }
 
         InstructionIT it = block->fInstructions.begin();
         dispatchFirstScal();
@@ -4120,6 +4124,13 @@ class FBCInterpreter : public FBCExecutor<REAL> {
     do_kIsinff : {
         REAL v = popReal(it);
         pushInt(std::isinf(v));
+        dispatchNextScal();
+    }
+    
+    do_kCopysignf : {
+        REAL x = popReal(it);
+        REAL y = popReal(it);
+        pushInt(std::copysign(x, y));
         dispatchNextScal();
     }
 

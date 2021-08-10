@@ -47,7 +47,7 @@ struct StringTypeManager {
     virtual std::string generateType(Typed* type, const std::string& name) = 0;
 };
 
-// StringTypeManager for C/C++, Java  and FIR backends
+// StringTypeManager for C/C++, Java and FIR backends
 
 class CStringTypeManager : public StringTypeManager {
    public:
@@ -338,28 +338,22 @@ class JuliaStringTypeManager : public StringTypeManager {
         fPtrRef = ptr_ref;
 
         fTypeDirectTable[Typed::kInt32]     = "Int32";
-        //fTypeDirectTable[Typed::kInt32_ptr] = fPtrRef + "Int32";
         fTypeDirectTable[Typed::kInt32_ptr] = "Int32";
         fTypeDirectTable[Typed::kInt32_vec] = "vector<Int32>";
 
         fTypeDirectTable[Typed::kInt64]     = "Int64";
-        //fTypeDirectTable[Typed::kInt64_ptr] =  fPtrRef + "Int64";
         fTypeDirectTable[Typed::kInt64_ptr] = "Int64";
         fTypeDirectTable[Typed::kInt64_vec] = "vector<Int64>";
 
-        fTypeDirectTable[Typed::kFloat]     = "T";
-        //fTypeDirectTable[Typed::kFloat_ptr] = fPtrRef + "T";
-        //fTypeDirectTable[Typed::kFloat_ptr_ptr] =  fPtrRef + fPtrRef + "T";
-        fTypeDirectTable[Typed::kFloat_ptr] = "T";
-        fTypeDirectTable[Typed::kFloat_ptr_ptr] = "T";
-        fTypeDirectTable[Typed::kFloat_vec] = "vector<T>";
+        fTypeDirectTable[Typed::kFloat]     = "Float32";
+        fTypeDirectTable[Typed::kFloat_ptr] = "Float32";
+        fTypeDirectTable[Typed::kFloat_ptr_ptr] = "Float32";
+        fTypeDirectTable[Typed::kFloat_vec] = "vector<Float32>";
 
-        fTypeDirectTable[Typed::kDouble]     = "T";
-        //fTypeDirectTable[Typed::kDouble_ptr] = fPtrRef + "T";
-        //fTypeDirectTable[Typed::kDouble_ptr_ptr] = fPtrRef + fPtrRef + "T";
-        fTypeDirectTable[Typed::kDouble_ptr] = "T";
-        fTypeDirectTable[Typed::kDouble_ptr_ptr] = "T";
-        fTypeDirectTable[Typed::kDouble_vec] = "vector<T>";
+        fTypeDirectTable[Typed::kDouble]     = "Float64";
+        fTypeDirectTable[Typed::kDouble_ptr] = "Float64";
+        fTypeDirectTable[Typed::kDouble_ptr_ptr] = "Float64";
+        fTypeDirectTable[Typed::kDouble_vec] = "vector<Float64>";
 
         fTypeDirectTable[Typed::kQuad]     = "quad";
         fTypeDirectTable[Typed::kQuad_ptr] = fPtrRef + "quad";
@@ -381,7 +375,7 @@ class JuliaStringTypeManager : public StringTypeManager {
 
         // DSP has to be empty here
         fTypeDirectTable[Typed::kObj]     = struct_name;
-        fTypeDirectTable[Typed::kObj_ptr] = struct_name + "{T}";
+        fTypeDirectTable[Typed::kObj_ptr] = struct_name;
 
         fTypeDirectTable[Typed::kUint_ptr] = "uintptr_t";
     }
@@ -418,14 +412,13 @@ class JuliaStringTypeManager : public StringTypeManager {
             return name + ((ty_str != "") ? ("::" + ty_str) : "");
         } else if (array_typed) {
             return (array_typed->fSize == 0)
-                       ? name + "::" + fPtrRef + generateType(array_typed->fType)
-                       : name + "::AbstractVector{" + generateType(array_typed->fType) + "}";
+                    ? name + "::" + fPtrRef + generateType(array_typed->fType)
+                    : name + "::Vector{" + generateType(array_typed->fType) + "}";
         } else {
             faustassert(false);
             return "";
         }
     }
 };
-
 
 #endif

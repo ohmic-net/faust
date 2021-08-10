@@ -62,7 +62,7 @@ struct JuliaInitFieldsVisitor : public DispatchVisitor {
         if (isIntPtrType(typed->getType())) {
             *fOut << "zeros(Int32, " << array_type->fSize << ")";
         } else {
-            *fOut << "zeros(T, " << array_type->fSize << ")";
+            *fOut << "zeros(" << ifloat() << ", " << array_type->fSize << ")";
         }
     }
     
@@ -70,6 +70,10 @@ struct JuliaInitFieldsVisitor : public DispatchVisitor {
 
 class JuliaInstVisitor : public TextInstVisitor {
    private:
+    
+    // Whether to consider an 'int' as a 'boolean' later on in code generation
+    bool fIntAsBool;
+    
     /*
      Global functions names table as a static variable in the visitor
      so that each function prototype is generated as most once in the module.
@@ -79,11 +83,15 @@ class JuliaInstVisitor : public TextInstVisitor {
     // Polymorphic math functions
     map<string, string> gPolyMathLibTable;
     
+    bool fMutateFun;
+    
+    string cast2FAUSTFLOAT(const string& str) { return "FAUSTFLOAT(" + str + ")"; }
+    
    public:
     using TextInstVisitor::visit;
 
-    JuliaInstVisitor(std::ostream* out, const string& struct_name, int tab = 0)
-        : TextInstVisitor(out, ".", new JuliaStringTypeManager(xfloat(), "*", struct_name), tab)
+    JuliaInstVisitor(std::ostream* out, const string& struct_name, int tab = 0, bool mutate_fun = false)
+        : TextInstVisitor(out, ".", new JuliaStringTypeManager(xfloat(), "*", struct_name), tab), fMutateFun(mutate_fun)
     {
         // Mark all math.h functions as generated...
         gFunctionSymbolTable["abs"] = true;
@@ -215,7 +223,7 @@ class JuliaInstVisitor : public TextInstVisitor {
         gPolyMathLibTable["log2f"]      = "log2";
         gPolyMathLibTable["log10f"]     = "log10";
         gPolyMathLibTable["powf"]       = "pow";
-        gPolyMathLibTable["remainderf"] = "rem";
+        gPolyMathLibTable["remainderf"] = "remainder";
         gPolyMathLibTable["rintf"]      = "rint";
         gPolyMathLibTable["roundf"]     = "round";
         gPolyMathLibTable["sinf"]       = "sin";
@@ -229,7 +237,11 @@ class JuliaInstVisitor : public TextInstVisitor {
         gPolyMathLibTable["coshf"]      = "cosh";
         gPolyMathLibTable["sinhf"]      = "sinh";
         gPolyMathLibTable["tanhf"]      = "tanh";
-
+    
+        gPolyMathLibTable["isnanf"]     = "isnan";
+        gPolyMathLibTable["isinff"]     = "isinf";
+        gPolyMathLibTable["copysignf"]  = "copysign";
+        
         // Polymath mapping double version
         gPolyMathLibTable["max_"] = "max";
         gPolyMathLibTable["min_"] = "min";
@@ -250,7 +262,7 @@ class JuliaInstVisitor : public TextInstVisitor {
         gPolyMathLibTable["log2"]      = "log2";
         gPolyMathLibTable["log10"]     = "log10";
         gPolyMathLibTable["pow"]       = "pow";
-        gPolyMathLibTable["remainder"] = "rem";
+        gPolyMathLibTable["remainder"] = "remainder";
         gPolyMathLibTable["rint"]      = "rint";
         gPolyMathLibTable["round"]     = "round";
         gPolyMathLibTable["sin"]       = "sin";
@@ -265,40 +277,11 @@ class JuliaInstVisitor : public TextInstVisitor {
         gPolyMathLibTable["sinh"]      = "sinh";
         gPolyMathLibTable["tanh"]      = "tanh";
 
-        // Polymath mapping quad version
-        gPolyMathLibTable["max_l"] = "max";
-        gPolyMathLibTable["min_l"] = "min";
-
-        gPolyMathLibTable["fabsl"]      = "abs";
-        gPolyMathLibTable["acosl"]      = "acos";
-        gPolyMathLibTable["asinl"]      = "asin";
-        gPolyMathLibTable["atanl"]      = "atan";
-        gPolyMathLibTable["atan2l"]     = "atan";
-        gPolyMathLibTable["ceill"]      = "ceil";
-        gPolyMathLibTable["cosl"]       = "cos";
-        gPolyMathLibTable["expl"]       = "exp";
-        gPolyMathLibTable["exp2l"]      = "exp2";
-        gPolyMathLibTable["exp10l"]     = "exp10";
-        gPolyMathLibTable["floorl"]     = "floor";
-        gPolyMathLibTable["fmodl"]      = "mod";
-        gPolyMathLibTable["logl"]       = "log";
-        gPolyMathLibTable["log2l"]      = "log2";
-        gPolyMathLibTable["log10l"]     = "log10";
-        gPolyMathLibTable["powl"]       = "pow";
-        gPolyMathLibTable["remainderl"] = "rem";
-        gPolyMathLibTable["rintl"]      = "rint";
-        gPolyMathLibTable["roundl"]     = "round";
-        gPolyMathLibTable["sinl"]       = "sin";
-        gPolyMathLibTable["sqrtl"]      = "sqrt";
-        gPolyMathLibTable["tanl"]       = "tan";
+        gPolyMathLibTable["isnan"]     = "isnan";
+        gPolyMathLibTable["isinf"]     = "isinf";
+        gPolyMathLibTable["copysign"]  = "copysign";
     
-        // Hyperbolic
-        gPolyMathLibTable["acoshl"]     = "acosh";
-        gPolyMathLibTable["asinhl"]     = "asinh";
-        gPolyMathLibTable["atanhl"]     = "atanh";
-        gPolyMathLibTable["coshl"]      = "cosh";
-        gPolyMathLibTable["sinhl"]      = "sinh";
-        gPolyMathLibTable["tanhl"]      = "tanh";
+        fIntAsBool = false;
     }
 
     virtual ~JuliaInstVisitor() {}
@@ -307,10 +290,10 @@ class JuliaInstVisitor : public TextInstVisitor {
     {
         // Special case
         if (inst->fZone == "0") {
-            *fOut << "declare(ui_interface, :" << inst->fZone << ", " << quote(inst->fKey)
+            *fOut << "declare!(ui_interface, :dummy, " << quote(inst->fKey)
             << ", " << quote(inst->fValue) << ")";
         } else {
-            *fOut << "declare(ui_interface, :" << inst->fZone << ", "
+            *fOut << "declare!(ui_interface, :" << inst->fZone << ", "
             << quote(inst->fKey) << ", " << quote(inst->fValue) << ")";
         }
         EndLine(' ');
@@ -321,22 +304,22 @@ class JuliaInstVisitor : public TextInstVisitor {
         string name;
         switch (inst->fOrient) {
             case OpenboxInst::kVerticalBox:
-                name = "openVerticalBox(";
+                name = "openVerticalBox!(";
                 break;
             case OpenboxInst::kHorizontalBox:
-                name = "openHorizontalBox(";
+                name = "openHorizontalBox!(";
                 break;
             case OpenboxInst::kTabBox:
-                name = "openTabBox(";
+                name = "openTabBox!(";
                 break;
         }
-        *fOut << name << "uiInterface, " << quote(inst->fName) << ")";
+        *fOut << name << "ui_interface, " << quote(inst->fName) << ")";
         EndLine(' ');
     }
 
     virtual void visit(CloseboxInst* inst)
     {
-        *fOut << "closeBox(ui_interface)";
+        *fOut << "closeBox!(ui_interface)";
         tab(fTab, *fOut);
     }
     
@@ -344,9 +327,9 @@ class JuliaInstVisitor : public TextInstVisitor {
     {
         string name;
         if (inst->fType == AddButtonInst::kDefaultButton) {
-            name = "addButton(";
+            name = "addButton!(";
         } else {
-            name = "uaddCheckButton(";
+            name = "addCheckButton!(";
         }
         *fOut << name << "ui_interface, " << quote(inst->fLabel) << ", :" << inst->fZone << ")";
         EndLine(' ');
@@ -357,18 +340,20 @@ class JuliaInstVisitor : public TextInstVisitor {
         string name;
         switch (inst->fType) {
             case AddSliderInst::kHorizontal:
-                name = "addHorizontalSlider(";
+                name = "addHorizontalSlider!(";
                 break;
             case AddSliderInst::kVertical:
-                name = "addVerticalSlider(";
+                name = "addVerticalSlider!(";
                 break;
             case AddSliderInst::kNumEntry:
-                name = "addNumEntry(";
+                name = "addNumEntry!(";
                 break;
         }
         *fOut << name << "ui_interface, " << quote(inst->fLabel) << ", :" << inst->fZone << ", "
-              << checkReal(inst->fInit) << ", " << checkReal(inst->fMin) << ", " << checkReal(inst->fMax) << ", "
-              << checkReal(inst->fStep) << ")";
+              << cast2FAUSTFLOAT(checkReal(inst->fInit)) << ", "
+              << cast2FAUSTFLOAT(checkReal(inst->fMin)) << ", "
+              << cast2FAUSTFLOAT(checkReal(inst->fMax)) << ", "
+              << cast2FAUSTFLOAT(checkReal(inst->fStep)) << ")";
         EndLine(' ');
     }
 
@@ -377,14 +362,15 @@ class JuliaInstVisitor : public TextInstVisitor {
         string name;
         switch (inst->fType) {
             case AddBargraphInst::kHorizontal:
-                name = "addHorizontalBargraph(";
+                name = "addHorizontalBargraph!(";
                 break;
             case AddBargraphInst::kVertical:
-                name = "addVerticalBargraph(";
+                name = "addVerticalBargraph!(";
                 break;
         }
         *fOut << name << "ui_interface, " << quote(inst->fLabel) << ", :" << inst->fZone << ", "
-              << checkReal(inst->fMin) << ", " << checkReal(inst->fMax) << ")";
+              << cast2FAUSTFLOAT(checkReal(inst->fMin)) << ", "
+              << cast2FAUSTFLOAT(checkReal(inst->fMax)) << ")";
         EndLine(' ');
     }
 
@@ -393,26 +379,69 @@ class JuliaInstVisitor : public TextInstVisitor {
         // Not supported for now
         throw faustexception("ERROR : 'soundfile' primitive not yet supported for Julia\n");
     }
+    
+    virtual void visit(Int32NumInst* inst) { *fOut << "Int32(" << inst->fNum << ")"; }
+    
+    virtual void visit(Int64NumInst* inst) { *fOut << "Int64(" << inst->fNum << ")"; }
+    
+    virtual void visit(Int32ArrayNumInst* inst)
+    {
+        char sep = '[';
+        for (size_t i = 0; i < inst->fNumTable.size(); i++) {
+            *fOut << sep << "Int32(" << inst->fNumTable[i] << ")";
+            sep = ',';
+        }
+        *fOut << ']';
+    }
+    
+    virtual void visit(FloatArrayNumInst* inst)
+    {
+        char sep = '[';
+        for (size_t i = 0; i < inst->fNumTable.size(); i++) {
+            *fOut << sep << checkFloat(inst->fNumTable[i]);
+            sep = ',';
+        }
+        *fOut << ']';
+    }
+    
+    virtual void visit(DoubleArrayNumInst* inst)
+    {
+        char sep = '[';
+        for (size_t i = 0; i < inst->fNumTable.size(); i++) {
+            *fOut << sep << checkDouble(inst->fNumTable[i]);
+            sep = ',';
+        }
+        *fOut << ']';
+    }
+    
+    virtual void visit(BinopInst* inst)
+    {
+        if (inst->fOpcode == kXOR) {
+            *fOut << "xor(";
+            inst->fInst1->accept(this);
+            *fOut << ", ";
+             inst->fInst2->accept(this);
+            *fOut << ")";
+        } else {
+            *fOut << "(";
+            inst->fInst1->accept(this);
+            *fOut << " ";
+            *fOut << gBinOpTable[inst->fOpcode]->fName;
+            *fOut << " ";
+            inst->fInst2->accept(this);
+            *fOut << ")";
+        }
+    }
    
     virtual void visit(DeclareVarInst* inst)
     {
-        /*
-        // TODO
         if (inst->fAddress->getAccess() & Address::kStaticStruct) {
-            *fOut << "static ";
-        }
-
-        if (inst->fAddress->getAccess() & Address::kVolatile) {
-            *fOut << "volatile ";
-        }
-        */
-    
-        if (inst->fAddress->getAccess() & Address::kStaticStruct) {
-            *fOut << inst->fAddress->getName() << " = get!(faustglobals, (";
-            *fOut << fTypeManager->generateType(inst->fType);
-            *fOut << ", :" << inst->fAddress->getName() << "), ";
-            JuliaInitFieldsVisitor::ZeroInitializer(fOut, inst->fType);
-            *fOut << ")";
+            *fOut << "const " << inst->fAddress->getName() << " = ";
+            if (inst->fValue) {
+                inst->fValue->accept(this);
+            } else {
+                JuliaInitFieldsVisitor::ZeroInitializer(fOut, inst->fType);
+            }
         } else {
             *fOut << fTypeManager->generateType(inst->fType, inst->fAddress->getName());
             if (inst->fValue) {
@@ -463,7 +492,7 @@ class JuliaInstVisitor : public TextInstVisitor {
         if (inst->fNumChannels == 0) return;
     
         for (int i = 0; i < inst->fNumChannels; ++i) {
-            *fOut << inst->fBufferName1 << i << " = @view " << inst->fBufferName2 << "[:, " << (i+1) << "]";
+            *fOut << inst->fBufferName1 << i << " = @inbounds @view " << inst->fBufferName2 << "[:, " << (i+1) << "]";
             tab(fTab, *fOut);
         }
     }
@@ -471,10 +500,10 @@ class JuliaInstVisitor : public TextInstVisitor {
     virtual void generateFunDefBody(DeclareFunInst* inst)
     {
         if (inst->fCode->fCode.size() == 0) {
-            *fOut << ") where {T}" << endl;  // Pure prototype
+            *fOut << ")" << endl;  // Pure prototype
         } else {
             // Function body
-            *fOut << ") where {T}";
+            *fOut << ")";
             fTab++;
             tab(fTab, *fOut);
             inst->fCode->accept(this);
@@ -506,19 +535,12 @@ class JuliaInstVisitor : public TextInstVisitor {
         } else {
             *fOut << "[";
             Int32NumInst* field_index = dynamic_cast<Int32NumInst*>(indexed->fIndex);
+            // Julia arrays start at 1
             if (field_index) {
-                // Julia arrays start at 1
                 *fOut << (field_index->fNum + 1) << "]";
             } else {
                 indexed->fIndex->accept(this);
-                LoadVarInst* index = dynamic_cast<LoadVarInst*>(indexed->fIndex);
-                // Loop access are already of type 1::n
-                if (index && index->fAddress->getAccess() == Address::kLoop) {
-                    *fOut << "]";
-                } else {
-                    // Otherwise Julia arrays start at 1
-                    *fOut << "+1]";
-                }
+                *fOut << "+1]";
             }
         }
     }
@@ -539,7 +561,7 @@ class JuliaInstVisitor : public TextInstVisitor {
     virtual void visit(::CastInst* inst)
     {
         if (isIntType(inst->fType->getType())) {
-            *fOut << "floor(";
+            *fOut << "trunc(";
             *fOut << fTypeManager->generateType(inst->fType) << ", ";
         } else {
             *fOut << fTypeManager->generateType(inst->fType) << "(";
@@ -551,39 +573,56 @@ class JuliaInstVisitor : public TextInstVisitor {
     // TODO : does not work, put this code in a function
     virtual void visit(BitcastInst* inst)
     {}
+    
+    virtual void visit(Select2Inst* inst)
+    {
+        *fOut << "((";
+        fIntAsBool = true;
+        inst->fCond->accept(this);
+        fIntAsBool = false;
+        *fOut << " != 0) ? ";
+        inst->fThen->accept(this);
+        *fOut << " : ";
+        inst->fElse->accept(this);
+        *fOut << ")";
+    }
 
     // Generate standard funcall (not 'method' like funcall...)
     virtual void visit(FunCallInst* inst)
     {
         string name = (gPolyMathLibTable.find(inst->fName) != gPolyMathLibTable.end()) ? gPolyMathLibTable[inst->fName] : inst->fName;
-        *fOut << name << "(";
+        // Function that mutate their arguments use the '!' syntax
+        *fOut << name << ((fMutateFun && inst->fArgs.size() > 0) ?  "!(" : "(");
         // Compile parameters
         generateFunCallArgs(inst->fArgs.begin(), inst->fArgs.end(), inst->fArgs.size());
         *fOut << ")";
     }
     
     virtual void visit(IfInst* inst)
-       {
-           *fOut << "if ";
-           visitCond(inst->fCond);
-           fTab++;
-           tab(fTab, *fOut);
-           inst->fThen->accept(this);
-           fTab--;
-           back(1, *fOut);
-           if (inst->fElse->fCode.size() > 0) {
-               *fOut << "elseif";
-               fTab++;
-               tab(fTab, *fOut);
-               inst->fElse->accept(this);
-               fTab--;
-               back(1, *fOut);
-               *fOut << "end";
-           } else {
-               *fOut << "end";
-           }
-           tab(fTab, *fOut);
-       }
+    {
+        *fOut << "if (";
+        fIntAsBool = true;
+        visitCond(inst->fCond);
+        fIntAsBool = false;
+        *fOut << " != 0)";
+        fTab++;
+        tab(fTab, *fOut);
+        inst->fThen->accept(this);
+        fTab--;
+        back(1, *fOut);
+        if (inst->fElse->fCode.size() > 0) {
+            *fOut << "elseif";
+            fTab++;
+            tab(fTab, *fOut);
+            inst->fElse->accept(this);
+            fTab--;
+            back(1, *fOut);
+            *fOut << "end";
+        } else {
+            *fOut << "end";
+        }
+        tab(fTab, *fOut);
+    }
   
     virtual void visit(ForLoopInst* inst)
     {
@@ -612,20 +651,35 @@ class JuliaInstVisitor : public TextInstVisitor {
         // Don't generate empty loops...
         if (inst->fCode->size() == 0) return;
         
-        *fOut << "for " << inst->getName() << "::Int32 = ";
+        *fOut << "@inbounds for " << inst->getName() << " in ";
+    
         if (inst->fReverse) {
-            Int32NumInst* field_index = dynamic_cast<Int32NumInst*>(inst->fUpperBound);
-            faustassert(field_index);
-            // Julia arrays start at 1
-            *fOut << (field_index->fNum + 1) << ":";
-            inst->fLowerBound->accept(this);
+            *fOut << "reverse(";
+            Int32NumInst* lower_bound = dynamic_cast<Int32NumInst*>(inst->fLowerBound);
+            faustassert(lower_bound);
+            *fOut << lower_bound->fNum << ":";
+            Int32NumInst* upper_bound = dynamic_cast<Int32NumInst*>(inst->fUpperBound);
+            if (upper_bound) {
+                // If an Int32NumInst, we just generate it without any type information
+                // (see visit(Int32NumInst* inst) which adds type information that we don't want here)
+                *fOut << upper_bound->fNum;
+            } else {
+                inst->fUpperBound->accept(this);
+            }
+            *fOut << ")";
         } else {
-            Int32NumInst* field_index = dynamic_cast<Int32NumInst*>(inst->fLowerBound);
-            faustassert(field_index);
-            // Julia arrays start at 1
-            *fOut << (field_index->fNum + 1) << ":";
-            inst->fUpperBound->accept(this);
+            Int32NumInst* lower_bound = dynamic_cast<Int32NumInst*>(inst->fLowerBound);
+            faustassert(lower_bound);
+            *fOut << lower_bound->fNum << ":";
+            Int32NumInst* upper_bound = dynamic_cast<Int32NumInst*>(inst->fUpperBound);
+            if (upper_bound) {
+                *fOut << (upper_bound->fNum - 1);
+            } else {
+                inst->fUpperBound->accept(this);
+                *fOut << "-1";
+            }
         }
+
         fTab++;
         tab(fTab, *fOut);
         inst->fCode->accept(this);

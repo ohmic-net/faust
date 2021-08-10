@@ -12,7 +12,11 @@
 . usage.sh
 
 SRC="0"
-ARCHFILE=$FAUSTARCH/portaudio.jl
+ARCHFILE=$FAUSTARCH/julia/portaudio_gtk.jl
+
+PLAY=false
+THREAD=1
+OSC=false
 
 #PHASE 2 : dispatch command arguments
 while [ $1 ]
@@ -23,14 +27,20 @@ do
         usage faust2portaudiojulia "[options] [Faust options] <file.dsp>"
         require PortAudio
         echo "Compiles Faust programs to PortAudio and Julia binary"
-        option
-        option -source "only generates the source project."
+        option "-osc" "to activate OSC control on 5000 and 5001 ports"
+        option "-play <num>" "to start the 'Julia' runtime with <num> threads and the generated file.jl"
         option "Faust options"
     	exit
     fi
 
     if [ $p = "-source" ]; then
         SRC="1"
+    elif [ $p = "-osc" ]; then
+        OSC=true
+    elif [ $p = "-play" ]; then
+    	PLAY=true
+    	shift
+        THREAD=$1
     elif [ ${p:0:1} = "-" ]; then
         OPTIONS="$OPTIONS $p"
     elif [[ -f "$p" ]] && [ ${p: -4} == ".dsp" ]; then
@@ -52,6 +62,14 @@ for p in $FILES; do
     f=$(basename "$p")
   
     # compile Faust DSP and put in the cargo folder
-    faust -a $ARCHFILE -lang julia "$f" -o "${f%.dsp}.jl"
+    faust -a $ARCHFILE -lang julia $OPTIONS "$f" -o "${f%.dsp}.jl"
 	
 done
+
+if [ $PLAY = true ] ; then
+	if [ $OSC = true ] ; then
+		julia -t $THREAD "${f%.dsp}.jl" -osc
+	else
+		julia -t $THREAD "${f%.dsp}.jl" -gtk
+	fi
+fi
