@@ -14,6 +14,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # ************************************************************************
 
+# Architectures files
 include("/usr/local/share/faust/julia/dsp/dsp.jl")
 include("/usr/local/share/faust/julia/gui/UI.jl")
 
@@ -42,10 +43,10 @@ end
 # UIZone with for sliders, nentries and bargraph
 struct UIZone
     field::Symbol
-    init::Float32
-    min::Float32
-    max::Float32
-    step::Float32
+    init::FAUSTFLOAT
+    min::FAUSTFLOAT
+    max::FAUSTFLOAT
+    step::FAUSTFLOAT
 end
 
 # MapUI to keep [path,Symbol] and [label,Symbol] maps
@@ -56,22 +57,27 @@ mutable struct MapUI <: UI
         map_ui.label_paths = Dict{String,UIZone}()
         map_ui.osc_paths = Dict{String,UIZone}()
         map_ui.path_builder = PathBuilder([])
+        map_ui.root = String("") 
         map_ui
 	end
     dsp::dsp
     path_builder::PathBuilder
     label_paths::Dict{String,UIZone}
     osc_paths::Dict{String,UIZone}
+    root::String
 end
-
+    
 # -- widget's layouts
 function openTabBox!(ui_interface::MapUI, label::String)
+    if (ui_interface.root == "") ui_interface.root = label end
     pushLabel!(ui_interface.path_builder, label)
 end
 function openHorizontalBox!(ui_interface::MapUI, label::String)
+    if (ui_interface.root == "") ui_interface.root = label end
     pushLabel!(ui_interface.path_builder, label)
 end
 function openVerticalBox!(ui_interface::MapUI, label::String)
+    if (ui_interface.root == "") ui_interface.root = label end
     pushLabel!(ui_interface.path_builder, label)
 end
 function closeBox!(ui_interface::MapUI)
@@ -124,7 +130,7 @@ function setParamValue!(ui_interface::MapUI, path::String, value::FAUSTFLOAT)
     elseif (haskey(ui_interface.label_paths, path))
         setproperty!(ui_interface.dsp, ui_interface.label_paths[path].field, value)
     else 
-        println("ERROR : setParamValue '", path, "' not found")
+        println("ERROR : setParamValue! '", path, "' not found")
     end
 end
 
@@ -144,6 +150,5 @@ function getZoneMap(ui_interface::MapUI)
 end
 
 function getRoot(ui_interface::MapUI)
-    first_path = collect(keys(ui_interface.osc_paths))[1]
-    return "/" * split(first_path, '/')[2]
+    return "/" * ui_interface.root
 end

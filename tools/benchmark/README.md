@@ -46,15 +46,15 @@ A set of header and object code files will be generated, and will have to be add
 
 The `-multi` mode generates an additional header file (like `<DSPName>multi.h`, containing a `<DSPName>multi` class) that will dynamically load and instantiate the correct code for the machine CPU (or a generic version if the given CPU is not supported). An instance of this aggregation class will have to be created at runtime (like with `dsp* dsp = new<DSPName>multi();`  or  `dsp* dsp = create<DSPName>multi();`) to load the appropriate object code version depending on the running machine CPU. 
 
+The `-multifun` mode uses the GCC [multiversion feature](https://gcc.gnu.org/wiki/FunctionMultiVersioning) to generate an additional header file (like `<DSPName>multi.h`, containing a `<DSPName>multi` class) that will dynamically load and instantiate the correct code for the machine CPU (or a generic version if the given CPU is not supported). An instance of this aggregation class will have to be created at runtime (like with `dsp* dsp = new<DSPName>multi();`  or  `dsp* dsp = create<DSPName>multi();`) to load the appropriate object code version depending on the running machine CPU. The list of CPUs to be compiled for must be defined in the `FAUST_ARCHS` environment variable.
+
 Note that this code uses the [LLVM](https://llvm.org) `llvm::sys::getHostCPUName()` function to discover the machine CPU. Thus the LLVM tool chain has to be installed, and the `llvm-config --ldflags --libs all --system-libs` command will typically have to be used at link time to add the needed LLVM libraries, along with `-dead_strip` to only keep what is really mandatory in the final binary.
 
 When used with the `-source` option, the `-DSOUNDFILE` and `pkg-config --cflags sndfile` flags have to be added to compile the generated C++ files, and `pkg-config --static --libs` sndfile has to be added at link time.
 
-The `-multifun` mode uses the GCC [multiversion feature](https://gcc.gnu.org/wiki/FunctionMultiVersioning) to generate an additional header file (like `<DSPName>multi.h`, containing a `<DSPName>multi` class) that will dynamically load and instantiate the correct code for the machine CPU (or a generic version if the given CPU is not supported). An instance of this aggregation class will have to be created at runtime (like with `dsp* dsp = new<DSPName>multi();`  or  `dsp* dsp = create<DSPName>multi();`) to load the appropriate object code version depending on the running machine CPU. The list of CPUs to be compiled for must be defined in the `FAUST_ARCHS` environment variable.
-
 The `-test` parameter can be used to compile a test program which will bench the DSP, print its UI, and render it.
 
-Note that using the `-inj foo.cpp` option allows to compile any C++ class containing a `dsp` subclass (which has obligatorily to be named `mydsp`), so for instance a manually written C++ class. This is a convenient way to optimise any C++ DSP class. 
+Note that using the `-inj foo.cpp` option allows to compile any C++ class containing a `dsp` subclass (which **must** be named `mydsp`), so for instance a manually written C++ class. This is a convenient way to optimise any C++ DSP class. 
 
  Examples:
 
@@ -65,7 +65,7 @@ Note that using the `-inj foo.cpp` option allows to compile any C++ class contai
  - create multi-cpu files for all possible CPUs and the multi-loader file, them compile them as object files, and compile a test program: `faust2object -all -multi -test foo.dsp`. 
  - define the `FAUST_ARCHS` environment variable, create a multi-cpu file for all possible CPUs defined in this variable and create the multi-loader file: `export FAUST_ARCHS="core2 haswell" && faust2object -sources -multifun foo.dsp`. 
  - define the `FAUST_ARCHS` environment variable, create a multi-cpu file for all possible CPUs defined in this variable and create the multi-loader file, and compile a test program: `export FAUST_ARCHS="core2 haswell" && faust2object -multifun -test foo.dsp`. 
- - compile a `foo.cpp` file (possibly manually written) and containing a  `dsp` subclass: `faust2object haswell -inj foo.cpp -multi -test foo.dsp`. 
+ - compile a `foo.cpp` file (possibly manually written) and containing the `mydsp` class: `faust2object haswell -inj foo.cpp -multi -test foo.dsp`. 
 
 ## dynamic-jack-gtk/dynamic-coreaudio-gtk
 
@@ -120,7 +120,23 @@ Here are the available options:
 
 ## interp-tracer
 
-The **interp-tracer** tool runs and instruments the compiled program using the Interpreter backend. Various statistics on the code are collected and displayed while running and/or when closing the application, typically FP_SUBNORMAL, FP_INFINITE and FP_NAN values, or INTEGER_OVERFLOW and DIV_BY_ZERO operations. Mode 4 and 5 allow to display the stack trace of the running code when FP_INFINITE, FP_NAN or INTEGER_OVERFLOW values are produced. The *-control* mode allows to check control parameters, by explicitly setting their *min* and *max* values, then running the DSP and setting all controllers (inside their range) in a random way. Mode 4 up to 7 also check LOAD/STORE errors, and are typically used by the Faust compiler developers to check the generated code. 
+**Note** : In Faust, the interval calculation system on signals is supposed to detect possible problematic computations at compile time, and refuse to compile the corresponding DSP code. But **since the interval calculation is currently quite imperfect**, it can misbehave and generate possible problematic code, that will possibly crash at runtime. 
+
+The **interp-tracer** tool runs and instruments the compiled program using the Interpreter backend. Various statistics on the code are collected and displayed while running and/or when closing the application, typically FP_SUBNORMAL, FP_INFINITE and FP_NAN values, or INTEGER_OVERFLOW, CAST_INT_OVERFLOW and DIV_BY_ZERO operations, or LOAD/STORE errors. 
+
+- [FP_SUBNORMAL, FP_INFINITE and FP_NAN values](https://www.gnu.org/software/libc/manual/html_node/Floating-Point-Classes.html)(*) are produced when compiling with floating point numbers. 
+- [INTEGER_OVERFLOW](https://en.wikipedia.org/wiki/Integer_overflow) is produced when computing with integer numbers (actually 32 bits Integer supported by the compiler) and producing out-of-range result. They can be a wanted effect like in the implementation of the [no.noise](https://github.com/grame-cncm/faustlibraries/blob/master/noises.lib#L63) generator.
+- [CAST_INT_OVERFLOW](https://frama-c.com/2013/10/09/Overflow-float-integer.html)(*) happen when converting a floating point number back in an integer number (like when using the `int(val)` expression). 
+- DIV_BY_ZERO(*) happens when dividing a number by 0. 
+-  LOAD/STORE(*) happens when reading or writing outside of `rdtable` or `rwtable`, or when loading a non initialized value (typically used by the Faust compiler developers to check the generated code). 
+
+(*) Those errors typically reveal incorrectly written code which must be corrected.
+
+Mode 4 and 5 allow to display the stack trace of the running code when FP_INFINITE, FP_NAN, INTEGER_OVERFLOW, DIV_BY_ZERO, CAST_INT_OVERFLOW and LOAD/STORE errors are produced. 
+
+The `-control` mode allows to check control parameters, by explicitly setting their *min* and *max* values, then running the DSP and setting all controllers (inside their range) in a random way. 
+
+Mode 4 up to 7 also check LOAD/STORE errors, mode 7 is typically used by the Faust compiler developers to check the generated code. 
 
 `interp-tracer [-trace <1-7>] [-control] [-output] [additional Faust options (-ftz xx)] foo.dsp`
 
@@ -131,8 +147,8 @@ Here are the available options:
  - `-trace 1 to collect FP_SUBNORMAL only` 
  - `-trace 2 to collect FP_SUBNORMAL, FP_INFINITE and FP_NAN`
  - `-trace 3 to collect FP_SUBNORMAL, FP_INFINITE, FP_NAN, INTEGER_OVERFLOW, DIV_BY_ZERO and CAST_INT_OVERFLOW`
- - `-trace 4 to collect FP_SUBNORMAL, FP_INFINITE, FP_NAN, INTEGER_OVERFLOW, DIV_BY_ZERO, CAST_INT_OVERFLOW and LOAD/STORE errors, fails at first FP_INFINITE, FP_NAN or LOAD/STORE error`
- - `-trace 5 to collect FP_SUBNORMAL, FP_INFINITE, FP_NAN, INTEGER_OVERFLOW, DIV_BY_ZERO, CAST_INT_OVERFLOW and LOAD/STORE errors, continue after FP_INFINITE, FP_NAN or LOAD/STORE error`
+ - `-trace 4 to collect FP_SUBNORMAL, FP_INFINITE, FP_NAN, INTEGER_OVERFLOW, DIV_BY_ZERO, CAST_INT_OVERFLOW and LOAD/STORE errors, fails at first FP_INFINITE, FP_NAN, CAST_INT_OVERFLOW or LOAD/STORE error`
+ - `-trace 5 to collect FP_SUBNORMAL, FP_INFINITE, FP_NAN, INTEGER_OVERFLOW, DIV_BY_ZERO, CAST_INT_OVERFLOW and LOAD/STORE errors, continue after FP_INFINITE, FP_NAN, CAST_INT_OVERFLOW or LOAD/STORE error`
  - `-trace 6 to only check LOAD/STORE errors and continue`
  - `-trace 7 to only check LOAD/STORE errors and exit`
 

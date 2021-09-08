@@ -28,7 +28,7 @@
 #include <vector>
 #include <map>
 #include <string>
-#include <iostream>
+#include <stdio.h>
 
 #include "faust/gui/UI.h"
 #include "faust/gui/PathBuilder.h"
@@ -48,8 +48,6 @@ class MapUI : public UI, public PathBuilder
     
         // Label zone map
         std::map<std::string, FAUSTFLOAT*> fLabelZoneMap;
-    
-        std::string fNullStr = "";
     
     public:
         
@@ -128,7 +126,7 @@ class MapUI : public UI, public PathBuilder
             } else if (fLabelZoneMap.find(path) != fLabelZoneMap.end()) {
                 *fLabelZoneMap[path] = value;
             } else {
-                std::cerr << "ERROR : setParamValue '" << path << "' not found\n";
+                fprintf(stderr, "ERROR : setParamValue '%s' not found\n", path.c_str());
             }
         }
         
@@ -139,7 +137,7 @@ class MapUI : public UI, public PathBuilder
             } else if (fLabelZoneMap.find(path) != fLabelZoneMap.end()) {
                 return *fLabelZoneMap[path];
             } else {
-                std::cerr << "ERROR : getParamValue '" << path << "' not found\n";
+                fprintf(stderr, "ERROR : getParamValue '%s' not found\n", path.c_str());
                 return 0;
             }
         }
@@ -149,23 +147,34 @@ class MapUI : public UI, public PathBuilder
         
         int getParamsCount() { return int(fPathZoneMap.size()); }
         
-        const std::string& getParamAddress(int index)
+        std::string getParamAddress(int index)
         {
             if (index < 0 || index > int(fPathZoneMap.size())) {
-                return fNullStr;
+                return "";
             } else {
                 auto it = fPathZoneMap.begin();
                 while (index-- > 0 && it++ != fPathZoneMap.end()) {}
                 return it->first;
             }
         }
+        
+        const char* getParamAddress1(int index)
+        {
+            if (index < 0 || index > int(fPathZoneMap.size())) {
+                return nullptr;
+            } else {
+                auto it = fPathZoneMap.begin();
+                while (index-- > 0 && it++ != fPathZoneMap.end()) {}
+                return it->first.c_str();
+            }
+        }
     
-        const std::string& getParamAddress(FAUSTFLOAT* zone)
+        std::string getParamAddress(FAUSTFLOAT* zone)
         {
             for (const auto& it : fPathZoneMap) {
                 if (it.second == zone) return it.first;
             }
-            return fNullStr;
+            return "";
         }
     
         FAUSTFLOAT* getParamZone(const std::string& str)

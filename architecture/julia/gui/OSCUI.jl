@@ -14,6 +14,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # ************************************************************************
 
+# Architectures files
 include("/usr/local/share/faust/julia/dsp/dsp.jl")
 include("/usr/local/share/faust/julia/gui/MapUI.jl")
 include("/usr/local/share/faust/julia/gui/meta.jl")
@@ -21,7 +22,7 @@ include("/usr/local/share/faust/julia/gui/meta.jl")
 using OpenSoundControl, Sockets, MacroTools
 
 # Retrieve the application name
-mutable struct NameMeta <: Meta
+mutable struct NameMeta <: FMeta
     name::String
 end
 
@@ -62,7 +63,7 @@ mutable struct OSCUI <: UI
 end
     
 # Receive and decode incoming OSC messages
-function run(ui_interface::OSCUI, block::Bool=true)
+function run!(ui_interface::OSCUI, block::Bool=true)
     
     # Send current state of all input/output controllers
     function sendMessages()

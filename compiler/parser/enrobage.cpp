@@ -59,7 +59,7 @@ static bool wordBoundaries(const string& str, string::size_type pos, string::siz
 
 /**
  * Replace every occurrence of oldstr by newstr inside str. str is modified
- * and returned as reference for convenience
+ * and returned as reference for convenience.
  */
 static string& replaceOccurrences(string& str, const string& oldstr, const string& newstr, bool force)
 {
@@ -140,14 +140,19 @@ class myparser {
 };
 
 /**
- * True if string s match '#include <faust/fname>'
+ * True if string s match '#include <faust/fname>' or include("/usr/local/share/faust/julia/fname")
  */
 static bool isFaustInclude(const string& line, string& fname)
 {
     myparser P(line);
+    // C/C++ case
     if (P.skip() && P.parse("#include") && P.skip() && P.filename(fname)) {
         myparser Q(fname);
         return Q.parse("faust/");
+    // Julia case
+    } else if (P.skip() && P.parse("include(") && P.skip() && P.filename(fname)) {
+        myparser Q(fname);
+        return Q.parse("/usr/local/share/faust/julia");
     } else {
         return false;
     }

@@ -15,7 +15,8 @@ A [Julia backend](https://github.com/grame-cncm/faust/tree/master-dev/compiler/g
 - `audio/audio.jl`: defines the base type and methods for audio drivers
 - `audio/portaudio.jl`: allows to use the [PortAudio library](http://portaudio.com) for real-time audio rendering
 - `minimal.jl`: shows how the generated Julia code can be used in a minimal program which allocates and instantiate the DSP, and call the `compute` function. The `MapUI.jl` file is used to possibly control the DSP.  Use  `faust -lang julia -a julia/minimal.jl foo.dsp -o foo.jl ` to create a ready to test  `foo.jl` file.
-- `portaudio_gtk.jl`: an architecture file used by the **faust2portaudiojulia** tool that combines the PortAudio driver and GTK and OSC controllers.
+- `minimal-control.jl`: test the `compute!`method with all controllers min/max range.
+- `portaudio-gtk.jl`: an architecture file used by the **faust2portaudiojulia** tool that combines the PortAudio driver and GTK and OSC controllers.
 
 With a fresh Julia install, all required packages can be installed with the `julia packages.jl` command done in the architecture/julia folder.
 
@@ -23,14 +24,15 @@ With a fresh Julia install, all required packages can be installed with the `jul
 
 The **faust2portaudiojulia** tool transforms a Faust DSP program into a fully working Julia source file which uses the [PortAudio library](http://portaudio.com) for real-time audio rendering, and can be controlled with OSC messages. By default it starts with the GTK based Graphical User Interface. It uses the `MapUI.jl`, `OSCUI.jl` and `GTKUI.jl` architecture files. 
 
-`faust2portaudiojulia [-osc] [-play <num>] [additional Faust options (-vec -vs 8...)] file.dsp` 
+`faust2portaudiojulia [-osc] [-oscc] [-play <num>] [additional Faust options (-vec -vs 8...)] file.dsp` 
 
 Here are the available options:
 
 - `-osc : to activate OSC control on 5000 and 5001 ports`
+- `-oscc : to activate OSC control on 5000 and 5001 ports and automatically start the faust-osc-controller application`
 - `-play <num> : to start the 'Julia' runtime with <num> threads and the generated file.jl`
 
-By default, it will create a `file.jl` to be executed with the `julia file.jl` command, or in an interactive session. Using   `-play <num>` optiosn allows to directly start the Julia executable.
+By default, it will create a `file.jl` to be executed with the `julia file.jl` command, or in an interactive session. Using the `-play <num>` option allows to directly start the Julia executable.
 
 - `-help or -h` : shows the different options 
 

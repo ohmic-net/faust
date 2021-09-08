@@ -14,22 +14,20 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # ************************************************************************
 
-# Architecture
+# Architectures files
 include("/usr/local/share/faust/julia/dsp/dsp.jl")
 
 abstract type audio end
 
-function init(driver::audio, name::String, dsp::dsp)
+function init!(driver::audio, name::String, dsp::dsp)
 end
 
 # Blocking version
-function run(driver::audio)
+function run!(driver::audio)
 end
 
-#=
-function start(driver::audio)
+function start!(driver::audio)
 end
 
-function stop(driver::audio)
+function stop!(driver::audio)
 end
-=#

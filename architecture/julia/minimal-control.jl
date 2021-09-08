@@ -37,15 +37,17 @@ function declare!(m::NameMeta, key::String, value::String)
 end
 
 # Testing
-using Plots
-
 samplerate = Int32(44100)
 block_size = Int32(512 * 10)
 
 test!() = begin
     # Init DSP
     my_dsp = mydsp{REAL}()
-    init!(my_dsp, samplerate)
+    try 
+        init!(my_dsp, samplerate)
+    catch (e) 
+        println(e)
+    end 
 
     m = NameMeta("")
     metadata!(my_dsp, m)
@@ -57,35 +59,37 @@ test!() = begin
     # Create a MapUI controller
     map_ui = MapUI(my_dsp)
     buildUserInterface!(my_dsp, map_ui)
-
-    # Print all zones
-    println("Path/UIZone dictionary: ", getZoneMap(map_ui), "\n")
-     
-    #= Possibly change control values
-    - using simple labels (end of path):
-    setParamValue!(map_ui, "freq", 500.0f0)
-    setParamValue!(map_ui, "/volume", -10.0f0)
-    - or using complete path:
-    setParamValue!(map_ui, "/Oscillator/freq", 500.0f0)
-    setParamValue!(map_ui, "/Oscillator/volume", -10.0f0)
-    =#
-
+  
     inputs = zeros(FAUSTFLOAT, block_size, getNumInputs(my_dsp))
     outputs = zeros(FAUSTFLOAT, block_size, getNumOutputs(my_dsp)) 
-    compute!(my_dsp, block_size, inputs, outputs)
-    
-    # display the outputs
-    display(plot(outputs, layout = (getNumOutputs(my_dsp), 1)))
-    
+
+    # Test all controllers
+    for control in map_ui.osc_paths
+        path = control.first
+        zone = control.second
+
+        # Test min
+        try 
+            println("Test min: ", path, " ", zone.min)
+            setproperty!(map_ui.dsp, zone.field, zone.min)
+            compute!(my_dsp, block_size, inputs, outputs)
+            setproperty!(map_ui.dsp, zone.field, zone.init) # reset to init
+        catch (e) 
+            println(e)
+            Base.show_backtrace(stdout, backtrace())
+        end
+
+        # Test max
+        try 
+            println("Test max: ", path, " ", zone.max)
+            setproperty!(map_ui.dsp, zone.field, zone.max)
+            compute!(my_dsp, block_size, inputs, outputs)
+            setproperty!(map_ui.dsp, zone.field, zone.init) # reset to init
+        catch (e) 
+            println(e)
+            Base.show_backtrace(stdout, backtrace())
+        end
+    end
 end
 
 test!()
-
-#=
-using BenchmarkTools
-my_dsp = mydsp()
-init(my_dsp, samplerate)
-inputs = zeros(REAL, block_size, getNumInputs(my_dsp))
-outputs = zeros(REAL, block_size, getNumOutputsmydsp(my_dsp))
-@benchmark compute(my_dsp, block_size, inputs, outputs)
-=#
